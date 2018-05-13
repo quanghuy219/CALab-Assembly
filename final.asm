@@ -35,6 +35,22 @@
 .eqv DISPLAY_CODE	0xFFFF000C 	# ASCII code to show, 1 byte
 .eqv DISPLAY_READY	0xFFFF0008	# =1 if the display has already to do
 					# Auto clear after sw
+					
+					
+					
+.eqv HEADING	0xffff8010
+# Integer: An angle between 0 and 359
+# 0 : North (up)
+# 90: East (right)
+# 180: South (down)
+# 270: West (left)
+.eqv MOVING	0xffff8050	# Boolean: whether or not to move
+
+.eqv LEAVETRACK	 0xffff8020	# Boolean (0 or non-0):
+				# whether or not to leave a track
+.eqv WHEREX	0xffff8030	# Integer: Current x-location of MarsBot
+.eqv WHEREY	0xffff8040	# Integer: Current y-location of MarsBot
+
 
 .data 
 	newLine: .asciiz "\n"
@@ -51,7 +67,7 @@ main:
 	
 	li	$k0,0
 #============================================================
-# Used registers: t1,t2,t3,t6,t7,t8,k0,k1,a0,a1,s0,s1,s2
+# Used registers: t1,t2,t3,t5,t6,t7,t8,k0,k1,a0,a1,a2,a3,s0,s1,s2
 #
 #=============================================================
 	
@@ -59,6 +75,7 @@ main:
 # GLOBAL VARIABLE
 # 	$a1: current control code
 #	$a2: keycode of enter or delete
+#	$a3: angle of movement of marsbot
 #======================================================
 
 
@@ -69,6 +86,8 @@ main:
 #===================================================   
 reset:
 	li	$k1,0
+	
+loop:
 
 read3ConsecutiveInput:
 	addi	$k1,$k1,1
@@ -163,7 +182,7 @@ waitForKey:
 	li	$s4,0
 	
 readKey: 
-	lw 	$a2, 0($t6)			# $t0 = [$k0] = KEY_CODE
+	lw 	$a2, 0($t6)			# $a2 = [$t6] = KEY_CODE
 	
 	beq	$a2,0x7f,deleteCode
 	beq	$a2,0x8,deleteCode
@@ -182,6 +201,15 @@ printNewLine:
 	li	$v0,4
 	la	$a0,newLine
 	syscall
+	
+implementCommand:
+	beq	$a1,0x1b4, implementGo
+	beq	$a1,0xc68, implementStop
+	beq	$a1,0x444, implementTurnLeft
+	beq	$a1,0x666, implementTurnRight
+	beq	$a1,0xdad, implementTrack
+	beq	$a1,0xcbc, implementUntrack
+	beq	$a1,0x999, implementReverse	
 
 sleep:				# sleep 100ms
 	li	$a0,100
@@ -193,6 +221,76 @@ readNextCharacter:
 #back_to_polling: j 	polling
 
 
+
+#----------------------------------------------------------------
+# Accept command and perform action
+#----------------------------------------------------------------
+
+implementGo:
+	jal	go
+	j	loop
+	
+implementStop:
+	jal	stop
+	j	loop
+
+implementTurnLeft:
+	
+	li	$at, LEAVETRACK 
+	lb	$t5, 0($at)	# check for tracking
+	beqz	$t5,implementTurnLeftUntrack
+	j	implementTurnLeftTrack
+	
+implementTurnLeftUntrack:
+	jal 	turnLeft
+	j	loop
+	
+implementTurnLeftTrack:
+	jal	untrack
+	jal	track
+	jal	turnLeft
+	j	loop
+	
+implementTurnRight:
+	
+	li	$at, LEAVETRACK 
+	lb	$t5, 0($at)	# check for tracking
+	beqz	$t5,implementTurnRightUntrack
+	j	implementTurnRightTrack
+
+implementTurnRightUntrack:
+	jal 	turnRight
+	j	loop
+	
+implementTurnRightTrack:
+	jal	untrack
+	jal	track
+	jal	turnRight
+	j	loop
+
+implementTrack:
+	jal	track
+	j	loop
+
+implementUntrack:
+	jal	untrack
+	j	loop
+	
+implementReverse:
+	jal	reverse
+	j	loop
+
+
+		
+
+
+
+
+
+
+#==============================================================
+#-----------------------------------------------------------
+# 	Scan four rows of the number pad
 checkFirstRow:	
 	li	$t3,0x01
 	j 	polling
@@ -208,27 +306,47 @@ checkThirdRow:
 checkFourthRow:
 	li	$t3,0x08
 	j	polling
-	
-	
+#------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+#	Store the input number in $a1
+# params:
+# 	$a1: the number
+#-----------------------------------------------------------------------
+
+#---------------------------------------------------------------
+#	Store first character in $s0 to the third degit from right to left in $a1 
+#---------------------------------------------------------------
 storeFirstCharacter:
 	add	$s0,$a0,$zero
 	sll	$a1,$s0,8	# shift left the first input e.x: 0xa00
 	j	print
 	
-	
+#---------------------------------------------------------------
+#	Store second character in $s1 to the second degit from right to left in $a1 
+#---------------------------------------------------------------	
 	
 storeSecondCharacter:
 	add	$s1,$a0,$zero
 	sll	$t8,$s1,4	# shift left the second input ex. 0xab0
 	add	$a1,$a1,$t8
 	j	print
+
+
+#---------------------------------------------------------------
+#	Store third character in $s2 to the first degit from right to left in $a1 
+#---------------------------------------------------------------	
 	
 storeThirdCharacter:
 	add	$s2,$a0,$zero
 	sll	$t8,$s2,0	# shift left the third input e.x: 0xabf
 	add	$a1,$a1,$t8
 	j	print
+#---------------------------------------------------------------------------
 
+#--------------------------------------------------------------------------
+#	Convert keycode to correspponding hexa value in $a0
+#---------------------------------------------------------------------------
 set0:
 	li	$a0,0x0
 	j 	storeInput
@@ -291,6 +409,120 @@ setF:
 	li	$a0,0xf
 	j 	storeInput
 	
+	
+#-------------------------------------------------------
+# Delete the command in $a1
+#-------------------------------------------------------
 deleteCode:
 	add	$a1,$zero,$zero
 	j	reset
+	
+	
+	
+
+
+
+#-----------------------------------------------------------
+# GO procedure, to start running
+# param[in]	none
+#-----------------------------------------------------------
+
+go:
+	li	$at, MOVING	# change MOVING port
+	addi 	$t5, $zero,1	# to logic 1,
+	sb	$t5, 0($at)	# to start running
+	
+	jr	$ra
+	
+#-----------------------------------------------------------
+# STOP procedure, to stop running
+# param[in] none
+#-----------------------------------------------------------
+
+stop:
+	li	$at, MOVING	# change MOVING port to 0
+	sb	$zero, 0($at)	# to stop
+	jr	$ra
+	
+#-----------------------------------------------------------
+# TRACK procedure, to start drawing line
+# param[in]	none
+#-----------------------------------------------------------
+track: 
+	li	$at, LEAVETRACK # change LEAVETRACK port
+	addi 	$t5, $zero,1	# to logic 1,
+	sb	$t5, 0($at)	# to start tracking
+	jr	$ra
+	
+#-----------------------------------------------------------
+# UNTRACK procedure, to stop drawing line
+# param[in]	none
+#-----------------------------------------------------------
+
+untrack:
+	li	$at, LEAVETRACK # change LEAVETRACK port to 0
+	sb	$zero, 0($at)	# to stop drawing tail
+	jr 	$ra
+	nop
+	
+#-----------------------------------------------------------
+# ROTATE procedure, to rotate the robot
+# param[in]	$a1, An angle between 0 and 359
+#	0 : North (up)
+#	90: East (right)
+#	180: South (down)
+#	270: West (left)
+#-----------------------------------------------------------
+
+rotate: 
+	li	$at, HEADING	# change HEADING port
+	sw	$a3, 0($at)	# to rotate robot
+	jr 	$ra
+	nop
+
+
+#-------------------------------------------------------------
+# Turn right procedure, turn 90* right from current direction
+# param: 
+#	$a1: the angle of motion
+#	Subtract a1 = a1 + 90
+#	Add a1 = a1 + 360 to remove negetive number
+#	Take a1 = a1 % 360 to avoid number greater than 360
+#-------------------------------------------------------------
+turnRight:
+	addi	$a3,$a3,90
+	addi	$a3,$a3,360
+	li	$t5,360
+	div	$a3,$t5
+	mfhi	$a3
+	
+	# Rotate procedure
+	li	$at, HEADING	# change HEADING port
+	sw	$a3, 0($at)	# to rotate robot
+	jr 	$ra
+	nop
+
+#-------------------------------------------------------------
+# Turn left procedure, turn 90* left from current direction
+# param: 
+#	$a1: the angle of motion
+#	Subtract a1 = a1 - 90
+#	Add a1 = a1 + 360 to remove negetive number
+#	Take a1 = a1 % 360 to avoid number greater than 360
+#-------------------------------------------------------------
+turnLeft:
+	subi	$a3,$a3,90
+	addi	$a3,$a3,360
+	li	$t5,360
+	div	$a3,$t5
+	mfhi	$a3
+	# Rotate procedure
+	li	$at, HEADING	# change HEADING port
+	sw	$a3, 0($at)	# to rotate robot
+	jr	$ra
+	
+#---------------------------------------------------------------
+# Reverse the route of marsbot
+#---------------------------------------------------------------	
+reverse:
+	jr	$ra

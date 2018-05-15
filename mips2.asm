@@ -1,47 +1,39 @@
+.eqv HEADING	0xffff8010
+# Integer: An angle between 0 and 359
+# 0 : North (up)
+# 90: East (right)
+# 180: South (down)
+# 270: West (left)
+.eqv MOVING	0xffff8050	# Boolean: whether or not to move
+
+.eqv LEAVETRACK	 0xffff8020	# Boolean (0 or non-0):
+				# whether or not to leave a track
+.eqv WHEREX	0xffff8030	# Integer: Current x-location of MarsBot
+.eqv WHEREY	0xffff8040	# Integer: Current y-location of MarsBot
+
+
 .text
-	li	$a1,90
-	li	$a0,360
+	li	$s0,50
 	
-	addi	$a1,$a1,360
-	div	$a1,$a0
-	mfhi	$v0
+	li	$a0,55
+	addi	$t0,$s0,10
+	subi	$t1,$s0,10
 	
 	
-sleep2: 
-	addi	$v0,$zero,32
-	li	$a0,5000
-	syscall
+	slt	$a1,$a0,$t0
+	sgt	$a2,$a0,$t1
+	and	$a1,$a1,$a2
 	
-	jal UNTRACK
 	
-	jal TRACK
 	
-
-turnLeft:
-	subi	$a0,$a0,90
-	addi	$a0,$a0,360
-	div	$a0,$t1
-	mfhi	$a0
 	
-	jal ROTATE
+	jal	stop
+	jal	turnRight
+	jal	saveState
+	jal	untrack
+	jal	track
+	jal	go
 	
-sleep3:
-	addi	$v0,$zero,32
-	li	$a0,4000
-	syscall
 	
-	jal	UNTRACK
-	jal 	TRACK
-
-goLeft:	
-	addi	$a0,$zero,270
-	jal 	ROTATE
 	
-sleep4:
-	addi	$v0,$zero,32
-	li	$a0,7000
-	syscall
 	
-	jal	UNTRACK
-	
-	jal	TRACK

@@ -15,89 +15,137 @@
 .text
 main:
 	li	$t5,360
-	jal 	track		# draw track
+	jal 	untrack		# draw track
 	
 	addi	$a3,$zero,90	# rotate 90 and start
+	li	$t1,270
 	
+	add	$fp,$sp,$zero
 running:
-	jal rotate
-	jal go
+
+	li	$s0,WHEREX
+	li	$s1,WHEREY
 	
-	# Sleep
-	addi	$v0,$zero,32
-	li	$a0,3000
-	syscall
+	jal	track
 	
-	jal	untrack
-	jal 	track
+	jal 	rotate
 	
-	# turn right for 3 seconds
-	jal turnRight
-	
-	
-	# Sleep
-	addi	$v0,$zero,32
-	li	$a0,3000
-	syscall
-	
-	jal	untrack
-	jal 	track
-	
-	# Stop for 3(s)
-	jal 	stop
-	
-	# Sleep
-	addi	$v0,$zero,32
-	li	$a0,3000
-	syscall
-	
-	jal	untrack
-	jal 	track
-	
+	jal	saveState
 	
 	jal 	go
-	nop
-	# Turn left for 3 seconds
-	jal 	turnLeft
-	
 	
 	# Sleep
 	addi	$v0,$zero,32
 	li	$a0,3000
 	syscall
 	
-	jal	untrack
-	jal 	track
-	
-	# turn left for 3 secs
-	jal 	turnLeft
-	jal 	rotate
-
-	# Sleep
-	addi	$v0,$zero,32
-	li	$a0,3000
-	syscall
-	
-	jal	untrack
-	jal 	track
-	
-	# turn right
+	jal 	stop
 	jal	turnRight
-	jal 	rotate
+	
+	jal	saveState
+	
+	jal	untrack
+	jal	track
+	jal	go
 	
 	# Sleep
 	addi	$v0,$zero,32
 	li	$a0,3000
 	syscall
 	
+	jal	stop	
+	jal	turnLeft
+	
+	jal	saveState
 	jal	untrack
-	jal 	track
+	jal	track
+	jal	go
+	
+	# Sleep
+	addi	$v0,$zero,32
+	li	$a0,3000
+	syscall
 	
 	
-	jal 	turnRight
-	jal 	rotate
+	jal	stop
+	jal	turnRight
+	jal	saveState
+	jal	untrack
+	jal	track
+	jal	go
+	
+	# Sleep
+	addi	$v0,$zero,32
+	li	$a0,3000
+	syscall
+	
+	
+	
+reverse:
+	jal	stop
+	beq	$sp,$fp,main	
+	# Revserse
+	lw	$t7,0($sp)	# 0 - WHEREX, 1-WHEREY
+	lw	$t8,-4($sp)	# X or Y
+	lw	$a3,-8($sp)	# angle
+	addi	$sp,$sp,-12
+	addi	$s6,$t8,10
+	subi	$s7,$t8,10
+	jal	rotate
+	jal	untrack
+	
+	jal	go
+	
+loop:	
+	jal	stop
+	jal	checkConditionXY
+	slt	$k0,$a0,$s6
+	sgt	$k1,$a0,$s7
+	and	$k0,$k0,$k1
+	jal	go
+	beq	$k0,1,reverse
+	j	loop
+
+checkConditionXY:
+	beqz	$t7,loadX
+	j	loadY
+	nop
+loadX:
+	lw	$a0,0($s0)
+	jr	$ra
+	
+loadY:
+	lw	$a0,0($s1)
+	jr	$ra
+	
+	
 endmain:
 
+saveState:
+	addi	$sp,$sp,12	# move head of Stack
+	addi	$t8,$a3,180	
+	li	$t9,360
+	div	$t8,$t9
+	mfhi	$t8		# angle
+	sw	$t8,-8($sp)	# store reverse angle in stack
+	li	$t9,180
+	div	$t8,$t9
+	mfhi	$t8
+	beqz	$t8,saveY	# jump to save Y
+	j	saveX		# jump to save X
+	
+	
+saveX:	# store WHEREX in $t6, $t7 = 0
+	lw	$t9,0($s0)	# save X in stack
+	sw	$t9,-4($sp)
+	sw	$zero,0($sp)
+	jr 	$ra
+saveY:	# store WHEREY in $t6, $t7 = 1
+	lw	$t9,0($s1)	# save Y in stack
+	addi	$at,$zero,1	# save 1
+	sw	$t9,-4($sp)
+	sw	$at,0($sp)
+	jr	$ra
 #-----------------------------------------------------------
 # GO procedure, to start running
 # param[in]	none

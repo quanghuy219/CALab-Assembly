@@ -63,7 +63,8 @@ main:
 	
 	li	$t6,KEY_CODE		# $t6: address of key_code
 	li 	$t7,KEY_READY		# $t7: address of key_ready
-		
+	
+	add	$fp,$sp,$zero
 	
 	li	$k0,0
 #============================================================
@@ -243,12 +244,14 @@ implementTurnLeft:
 	
 implementTurnLeftUntrack:
 	jal 	turnLeft
+	jal 	saveState
 	j	loop
 	
 implementTurnLeftTrack:
 	jal	untrack
 	jal	track
 	jal	turnLeft
+	jal	saveState
 	j	loop
 	
 implementTurnRight:
@@ -260,12 +263,14 @@ implementTurnRight:
 
 implementTurnRightUntrack:
 	jal 	turnRight
+	jal	saveState
 	j	loop
 	
 implementTurnRightTrack:
 	jal	untrack
 	jal	track
 	jal	turnRight
+	jal	saveState
 	j	loop
 
 implementTrack:
@@ -521,8 +526,87 @@ turnLeft:
 	sw	$a3, 0($at)	# to rotate robot
 	jr	$ra
 	
+#=================================================================
+# Use stack to store the reverse of current state in every turn.
+#	Structure stored in stack 
+#	1 - $t8: reverse angle       angle = (angle + 180) % 360
+# 	2 - $t9: X or Y cooridnate at the turn
+# 	3 - mark : 0: store x, 1: store y
+#=================================================================
+
+saveState:
+	addi	$sp,$sp,12	# move head of Stack
+	addi	$t8,$a3,180	
+	li	$t9,360
+	div	$t8,$t9
+	mfhi	$t8		# angle
+	sw	$t8,-8($sp)	# store reverse angle in stack
+	li	$t9,180
+	div	$t8,$t9
+	mfhi	$t8
+	beqz	$t8,saveY	# jump to save Y
+	j	saveX		# jump to save X
+	
+	
+saveX:	# store WHEREX in $t6, $t7 = 0
+	li	$at,WHEREX
+	lw	$t9,0($at)	# save X in stack
+	sw	$t9,-4($sp)
+	sw	$zero,0($sp)
+	jr 	$ra
+saveY:	# store WHEREY in $t6, $t7 = 1
+	li	$at,WHEREY
+	lw	$t9,0($at)	# save Y in stack
+	addi	$at,$zero,1	# save 1
+	sw	$t9,-4($sp)
+	sw	$at,0($sp)
+	jr	$ra
+
 #---------------------------------------------------------------
 # Reverse the route of marsbot
-#---------------------------------------------------------------	
+#	Pop data from stack
+#	$t7:	mark of X or Y: 0 - X, 1 - Y
+#	$t8: value of X or Y
+#	$a3: angle to go back
+#---------------------------------------------------------------
+	
 reverse:
+	jal	stop
+	beq	$sp,$fp,main	# Origin of the plane, restart the program
+	# Revserse
+	lw	$t7,0($sp)	# 0 - WHEREX, 1-WHEREY
+	lw	$t8,-4($sp)	# X or Y
+	lw	$a3,-8($sp)	# angle
+	addi	$sp,$sp,-12
+	addi	$s6,$t8,10	# set error of 10 for the original position
+	subi	$s7,$t8,10	#  (x-10, x+10) or (y-10,y+10)
+	jal	rotate
+	jal	untrack
+	
+	jal	go
+	
+loopBack:	
+	jal	stop
+	jal	checkConditionXY
+	slt	$k0,$a0,$s6	# if  x0 - 10 < x < x0 + 10 => back to the previous turn 
+	sgt	$k1,$a0,$s7
+	and	$k0,$k0,$k1
+	jal	go
+	beq	$k0,1,reverse
+	j	loopBack	
+
+checkConditionXY:
+	beqz	$t7,loadX
+	j	loadY
+	nop
+loadX:
+	li	$at,WHEREX
+	lw	$a0,0($at)
 	jr	$ra
+	
+loadY:
+	li	$at,WHEREY
+	lw	$a0,0($at)
+	jr	$ra
+	
+	

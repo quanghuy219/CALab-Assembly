@@ -54,7 +54,13 @@
 
 .data 
 	newLine: .asciiz "\n"
-
+GO: .asciiz "1B4 - GO\n"
+STOP: .asciiz "C68 - STOP\n"
+TURNLEFT: .asciiz "444 - TURN LEFT\n"
+TURNRIGHT: .asciiz "666 - TURN RIGHT\n"
+TRACK: .asciiz "DAD - TRACK\n"
+UNTRACK: .asciiz "CBC - UNTRACK\n"
+GOBACK: .asciiz "999 - GO BACK\n"
 		
 .text
 main:
@@ -155,7 +161,7 @@ polling:
 #	$s0: first input
 #	$s1: second input
 #	$s2: third input
-#	$a4: combination of 3 inputs in hexa value e.x: 0xabc
+#	$a1: combination of 3 inputs in hexa value e.x: 0xabc
 #=================================================
 storeInput:
 	beq	$k1,1,storeFirstCharacter
@@ -193,15 +199,15 @@ readKey:
 	j	waitForKey
 	
 printCommand:	
-	li	$v0,34		# print integer (hexa)
-	add	$a0,$a1,$zero
-	syscall
-	nop
+	#li	$v0,34		# print integer (hexa)
+	#add	$a0,$a1,$zero
+	#syscall
+	#nop
 	
 printNewLine:
-	li	$v0,4
-	la	$a0,newLine
-	syscall
+	#li	$v0,4
+	#la	$a0,newLine
+	#syscall
 	
 implementCommand:
 	beq	$a1,0x1b4, implementGo
@@ -213,7 +219,7 @@ implementCommand:
 	beq	$a1,0x999, implementReverse	
 
 sleep:				# sleep 100ms
-	li	$a0,100
+	li	$a0,300
 	li	$v0,32
 	syscall			# continue polling
 
@@ -228,71 +234,141 @@ readNextCharacter:
 #----------------------------------------------------------------
 
 implementGo:
-	jal	go
+	jal	printGo
+runGo:	jal	go
 	j	loop
 	
 implementStop:
+	jal	printStop
+runStop:	
 	jal	stop
 	j	loop
 
 implementTurnLeft:
-	
+	jal	printTurnLeft
+runTurnLeft:
 	li	$at, LEAVETRACK 
 	lb	$t5, 0($at)	# check for tracking
 	beqz	$t5,implementTurnLeftUntrack
 	j	implementTurnLeftTrack
 	
 implementTurnLeftUntrack:
+	#  bot does not go on straight line when turning
+	# fix: stop ----> go
+	# store move of bot before turn
+	li	$v0,MOVING	# store state before turn. move or stop
+	lb	$v1,0($v0)
+	jal	stop
 	jal 	turnLeft
 	jal 	saveState
+
+	beq	$v1,1,runGo	# if bot was moving before turn, then keep going
 	j	loop
 	
 implementTurnLeftTrack:
+	li	$v0,MOVING
+	lb	$v1,0($v0)
+	jal	stop
 	jal	untrack
 	jal	track
 	jal	turnLeft
 	jal	saveState
+	beq	$v1,1,runGo
 	j	loop
 	
 implementTurnRight:
-	
+	jal	printTurnRight
+runTurnRight:	
 	li	$at, LEAVETRACK 
 	lb	$t5, 0($at)	# check for tracking
 	beqz	$t5,implementTurnRightUntrack
 	j	implementTurnRightTrack
 
 implementTurnRightUntrack:
+	li	$v0,MOVING
+	lb	$v1,0($v0)
+	jal	stop
 	jal 	turnRight
 	jal	saveState
+
+	beq	$v1,1,runGo
 	j	loop
 	
 implementTurnRightTrack:
+	li	$v0,MOVING
+	lb	$v1,0($v0)
+	jal	stop
 	jal	untrack
 	jal	track
 	jal	turnRight
 	jal	saveState
+	beq	$v1,1,runGo
 	j	loop
 
 implementTrack:
+	jal	printTrack
+runTrack:
 	jal	track
 	j	loop
 
 implementUntrack:
+	jal	printUntrack
+runUntrack:	
 	jal	untrack
 	j	loop
 	
 implementReverse:
+	jal	printGoBack
+runReverse:	
 	jal	reverse
 	j	loop
 
 
 		
 
-
-
-
-
-
+printGo: 
+	li	$v0,4
+	la	$a0,GO
+	syscall
+	nop
+	jr	$ra
+	
+printStop:
+	li	$v0,4
+	la	$a0,STOP
+	syscall
+	nop
+	jr	$ra
+printTurnLeft:
+	li	$v0,4
+	la	$a0,TURNLEFT
+	syscall
+	nop
+	jr	$ra
+printTurnRight:
+	li	$v0,4
+	la	$a0,TURNRIGHT
+	syscall
+	nop
+	jr	$ra
+printTrack:
+	li	$v0,4
+	la	$a0,TRACK
+	syscall
+	nop
+	jr	$ra
+printUntrack:
+	li	$v0,4
+	la	$a0,UNTRACK
+	syscall
+	nop
+	jr	$ra
+printGoBack:
+	li	$v0,4
+	la	$a0,GOBACK
+	syscall
+	nop
+	jr	$ra
 #==============================================================
 #-----------------------------------------------------------
 # 	Scan four rows of the number pad
@@ -578,8 +654,8 @@ reverse:
 	lw	$t8,-4($sp)	# X or Y
 	lw	$a3,-8($sp)	# angle
 	addi	$sp,$sp,-12
-	addi	$s6,$t8,10	# set error of 10 for the original position
-	subi	$s7,$t8,10	#  (x-10, x+10) or (y-10,y+10)
+	addi	$s6,$t8,5	# set error of 10 for the original position
+	subi	$s7,$t8,5	#  (x-5, x+5) or (y-5,y+5)
 	jal	rotate
 	jal	untrack
 	
